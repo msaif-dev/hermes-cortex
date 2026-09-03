@@ -1,0 +1,94 @@
+# Hermes MCP Platform — Example Configuration
+# Copy to config.yaml and fill in actual values.
+# Secrets should be provided via environment variables, not this file.
+
+# Application
+app:
+  environment: development  # development | staging | production | testing
+  service_name: hermes-mcp-platform
+
+# Database (PostgreSQL)
+database:
+  host: localhost
+  port: 5432
+  name: hermes
+  user: hermes_readonly
+  # password: SET VIA DB_PASSWORD env var
+  min_connections: 2
+  max_connections: 10
+  statement_timeout_ms: 30000
+  ssl_mode: require
+
+# Slack
+slack:
+  # bot_token: SET VIA SLACK_BOT_TOKEN env var (xoxb-...)
+  # app_token: SET VIA SLACK_APP_TOKEN env var (xapp-...)
+
+# Daytona Sandbox
+daytona:
+  api_url: https://app.daytona.io/api
+  target: us
+  # api_key: SET VIA DAYTONA_API_KEY env var
+  default_image: python:3.11-slim
+  cpu: 2
+  memory: 4  # GiB
+  disk: 10   # GiB
+  execution_timeout_s: 60
+  auto_stop_interval_min: 5
+  network_block_all: true  # Block all outbound network in sandboxes
+
+# LLM Provider
+llm:
+  provider: openai
+  model: gpt-4
+  # api_key: SET VIA LLM_API_KEY env var
+  max_tokens: 4096
+  temperature: 0.1
+  max_retries: 3
+  timeout_s: 60
+  max_cost_per_task_usd: 1.00
+
+# Agent Limits
+agent:
+  max_planning_steps: 10
+  max_tool_calls: 20
+  max_retries: 3
+  max_execution_time_s: 120
+  max_recursive_depth: 3
+
+# MCP Servers
+mcp_servers:
+  document_search:
+    transport: stdio
+    command: python
+    args: ["-m", "hermes_mcp.mcp_servers.document_search"]
+  postgres_query:
+    transport: stdio
+    command: python
+    args: ["-m", "hermes_mcp.mcp_servers.postgres_query"]
+  code_search:
+    transport: stdio
+    command: python
+    args: ["-m", "hermes_mcp.mcp_servers.code_search"]
+  execution_sandbox:
+    transport: stdio
+    command: python
+    args: ["-m", "hermes_mcp.mcp_servers.execution_sandbox"]
+
+# Tool Allowlist (explicit authorization)
+tool_allowlist:
+  - search_docs
+  - run_sql
+  - search_code
+  - run_python
+  - memory_search
+  - memory_store
+
+# Observability
+observability:
+  log_level: INFO
+  log_format: json  # json | console
+  metrics_enabled: true
+  metrics_port: 9090
+  tracing_enabled: false
+  # tracing_endpoint: http://localhost:4317

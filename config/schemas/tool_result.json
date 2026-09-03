@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hermes-mcp.local/schemas/tool_result.json",
+  "title": "ToolResult",
+  "description": "Schema for the normalized response produced by an MCP tool execution.",
+  "type": "object",
+  "required": ["call_id", "tool_name", "success", "content", "execution_time_ms", "timestamp"],
+  "properties": {
+    "call_id": {
+      "type": "string",
+      "description": "Matching tool call identifier"
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Name of the tool executed"
+    },
+    "success": {
+      "type": "boolean",
+      "description": "Whether execution succeeded"
+    },
+    "content": {
+      "type": "string",
+      "description": "Sanitized text output or error message"
+    },
+    "error_category": {
+      "type": "string",
+      "enum": ["VALIDATION_ERROR", "TIMEOUT", "EXECUTION_ERROR", "AUTH_ERROR", "RATE_LIMITED", null],
+      "description": "Classification of error if success is false"
+    },
+    "execution_time_ms": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Duration of tool execution in milliseconds"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional execution metadata (row count, truncated flag, exit code, etc.)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 completion timestamp"
+    }
+  },
+  "additionalProperties": false
+}

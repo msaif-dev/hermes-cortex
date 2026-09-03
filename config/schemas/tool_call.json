@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hermes-mcp.local/schemas/tool_call.json",
+  "title": "ToolCall",
+  "description": "Schema for an MCP tool invocation requested by an agent or user.",
+  "type": "object",
+  "required": ["call_id", "tool_name", "arguments", "timestamp"],
+  "properties": {
+    "call_id": {
+      "type": "string",
+      "description": "Unique identifier for this tool call"
+    },
+    "tool_name": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Name of the MCP tool to execute"
+    },
+    "arguments": {
+      "type": "object",
+      "description": "Arguments passed to the tool"
+    },
+    "timeout_s": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 300,
+      "default": 30,
+      "description": "Per-call timeout in seconds"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 creation timestamp"
+    },
+    "caller_id": {
+      "type": "string",
+      "description": "Identity of the calling analyst or session"
+    }
+  },
+  "additionalProperties": false
+}

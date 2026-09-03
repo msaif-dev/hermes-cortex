@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hermes-mcp.local/schemas/agent_state.json",
+  "title": "AgentState",
+  "description": "Schema for the runtime execution state and trajectory of the reasoning agent.",
+  "type": "object",
+  "required": ["session_id", "status", "current_step", "steps", "created_at", "updated_at"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Unique session or conversation identifier"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "PLANNING", "EXECUTING", "EVALUATING", "COMPLETED", "FAILED", "BLOCKED"],
+      "description": "Current lifecycle status"
+    },
+    "user_query": {
+      "type": "string",
+      "description": "Sanitized initial user query"
+    },
+    "current_step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of the active step"
+    },
+    "plan": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Generated plan steps"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["step_number", "thought"],
+        "properties": {
+          "step_number": { "type": "integer" },
+          "thought": { "type": "string" },
+          "tool_call": { "type": "object" },
+          "tool_result": { "type": "object" },
+          "completed": { "type": "boolean" }
+        }
+      },
+      "description": "Chronological episodic trajectory trace"
+    },
+    "total_tokens_used": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "total_cost_usd": {
+      "type": "number",
+      "minimum": 0,
+      "default": 0
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}
