@@ -4,6 +4,7 @@ Tests offline initialization, configuration gating, and message routing.
 
 Requirements: FR-SLACK-001 through FR-SLACK-005, GEMINI.md §9.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -41,3 +42,35 @@ class TestSlackGateway:
         gw = SlackGateway(config=cfg)
         # Should return without raising exceptions
         await gw.start()
+
+    async def test_process_file_attachment_valid_csv(self) -> None:
+        gw = SlackGateway()
+        file_info = {
+            "name": "data.csv",
+            "size": 1024,
+            "mimetype": "text/csv",
+        }
+        res = await gw.process_file_attachment(file_info)
+        assert res is not None
+        assert res["filename"] == "data.csv"
+        assert res["size"] == 1024
+
+    async def test_process_file_attachment_rejects_disallowed_extension(self) -> None:
+        gw = SlackGateway()
+        file_info = {
+            "name": "malicious.exe",
+            "size": 1024,
+            "mimetype": "application/octet-stream",
+        }
+        res = await gw.process_file_attachment(file_info)
+        assert res is None
+
+    async def test_process_file_attachment_rejects_oversized_file(self) -> None:
+        gw = SlackGateway()
+        file_info = {
+            "name": "huge.csv",
+            "size": 25 * 1024 * 1024,  # 25 MB
+            "mimetype": "text/csv",
+        }
+        res = await gw.process_file_attachment(file_info)
+        assert res is None
