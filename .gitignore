@@ -41,11 +41,13 @@ htmlcov/
 # Docker
 *.log
 
-# Internal specifications, agents, and planning docs (local only)
+# Internal specifications, agents, workflows, and planning docs (local only)
 .gemini/
 docs/
+.github/
 AGENTS.md
 AI_ENGINEER_AGENT_SYSTEM_SPEC.md
 plan.md
 structure.md
+
 
