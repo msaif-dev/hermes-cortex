@@ -8,7 +8,7 @@ This guide provides step-by-step instructions for installing, configuring, and r
 
 - **Python:** 3.11, 3.12, or 3.13
 - **Git:** Installed and available on your PATH
-- **Docker & Docker Compose (Optional):** Required only if you want to run local PostgreSQL, Redis, and Qdrant containers. The core agent and all 4 MCP servers can also run 100% locally without Docker.
+- **Docker & Docker Compose (Optional):** Required only if you want to run local PostgreSQL, Redis, and Qdrant containers. The core agent and all 4 MCP servers can also run 100% locally with automated in-memory failover.
 
 ---
 
@@ -94,6 +94,7 @@ Hermes Cortex features native Google Gemini integration.
      - `chat:write`
      - `channels:history`
      - `im:history`
+     - `files:read`
      - `files:write`
    - Scroll to the top of the page and click **"Install to Workspace"** → click **Allow**.
    - Copy the **Bot User OAuth Token** (starts with `xoxb-`) and set:
@@ -110,7 +111,7 @@ Hermes Cortex features native Google Gemini integration.
 ### 3.3 PostgreSQL Data Warehouse Credentials
 
 - **If using Docker Compose:**
-  The included `docker-compose.yml` automatically launches PostgreSQL and runs `scripts/init-db.sql`. The default credentials match `.env`:
+  The included `docker-compose.yml` automatically launches PostgreSQL and initializes `scripts/init-db.sql`. The default credentials match `.env`:
   ```env
   DB_HOST=localhost
   DB_PORT=5432
@@ -148,7 +149,10 @@ OBS_LOG_LEVEL=INFO
 OBS_LOG_FORMAT=console
 OBS_METRICS_ENABLED=true
 OBS_METRICS_PORT=9090
+OBS_TRACING_ENABLED=false
 ```
+
+When `OBS_METRICS_ENABLED=true`, Prometheus metrics are automatically exposed at `http://localhost:9090/metrics` and service health at `http://localhost:9090/healthz`.
 
 ---
 
@@ -175,11 +179,31 @@ hermes
 
 ---
 
-## 5. Verifying the Installation
+## 5. Automated Benchmarking
 
-Run the complete test suite to confirm all 4 MCP servers, memory stores, and security checks are functioning:
+Run the automated performance benchmark suite across all 4 MCP servers, memory caching, and multi-step reasoning:
 
 ```bash
-pytest tests/ -v
+python scripts/run_benchmarks.py
 ```
-All 79 automated tests should pass.
+
+This verifies latencies against SLA targets and outputs detailed statistical percentiles (min, max, mean, p95).
+
+---
+
+## 6. Verifying the Installation
+
+Run the complete test suite and static analysis to confirm all components and quality gates pass:
+
+```bash
+# Run all 92 automated tests with coverage
+pytest tests/ -v --cov=src/hermes_mcp
+
+# Type checking
+mypy src/ tests/ scripts/
+
+# Linting & Formatting
+ruff check src/ tests/ scripts/
+ruff format --check src/ tests/ scripts/
+```
+All **92 automated tests** should pass cleanly with zero linting or type errors.
