@@ -37,3 +37,15 @@ INSERT INTO sample_data (category, description, value) VALUES
 ('expense', 'Q2 2026 Operating Cost', 920000.00),
 ('expense', 'Q3 2026 Operating Cost', 950000.00)
 ON CONFLICT DO NOTHING;
+
+-- Episodic Agent Trajectory Table (FR-MEM-002, JSONB storage)
+CREATE TABLE IF NOT EXISTS agent_trajectories (
+    session_id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    plan JSONB DEFAULT '[]',
+    steps JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+

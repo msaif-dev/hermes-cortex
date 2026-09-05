@@ -14,7 +14,7 @@ from hermes_mcp.memory.episodic_store import EpisodicStore
 from hermes_mcp.memory.semantic_cache import SemanticCache
 from hermes_mcp.memory.session_store import SessionStore
 from hermes_mcp.memory.vector_memory import VectorMemoryStore
-from hermes_mcp.models import TrajectoryStep
+from hermes_mcp.models import AgentState, TrajectoryStep
 
 
 class TestSessionStore:
@@ -101,3 +101,27 @@ class TestVectorMemory:
         fact = mem.store_fact("analyst_1", "Temporary fact to delete")
         assert mem.delete_fact("analyst_1", fact.memory_id) is True
         assert len(mem.search_memory("analyst_1", "Temporary")) == 0
+
+    def test_qdrant_offline_fallback(self) -> None:
+        mem = VectorMemoryStore(qdrant_url="http://invalid-qdrant-host:9999")
+        assert mem.is_qdrant_connected is False
+        fact = mem.store_fact("user_fallback", "Fact during Qdrant outage")
+        results = mem.search_memory("user_fallback", "Fact")
+        assert len(results) == 1
+        assert mem.delete_fact("user_fallback", fact.memory_id) is True
+
+
+class TestStorageBackendFallbacks:
+    """Tests verifying fail-safe behavior when external containers are offline."""
+
+    def test_semantic_cache_offline_redis_fallback(self) -> None:
+        cache = SemanticCache(redis_url="redis://invalid-redis-host:9999/0")
+        assert cache.is_redis_connected is False
+        cache.set("user_a", "hello", "world")
+        assert cache.get("user_a", "hello") == "world"
+
+    async def test_episodic_persist_without_pool_returns_false(self) -> None:
+        store = EpisodicStore()
+        state = AgentState(user_query="test query")
+        success = await store.persist_trace("sess_1", state, pool=None)
+        assert success is False
