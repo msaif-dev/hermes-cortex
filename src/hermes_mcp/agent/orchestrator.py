@@ -9,9 +9,12 @@ Requirements: FR-AGENT-001 through FR-AGENT-005, GEMINI.md §28, §29.
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import UTC, datetime
 from typing import Any
+
+import httpx
 
 from hermes_mcp.agent.planner import TaskPlanner
 from hermes_mcp.agent.reflexion import ReflexionEvaluator
@@ -33,6 +36,8 @@ from hermes_mcp.models import (
     ToolResult,
     TrajectoryStep,
 )
+from hermes_mcp.observability.metrics import registry
+from hermes_mcp.observability.tracing import trace_span
 from hermes_mcp.security.authorizer import ToolAuthorizer
 from hermes_mcp.security.input_validation import validate_slack_message
 
@@ -153,7 +158,10 @@ class AgentOrchestrator:
             duration_ms = round((time.monotonic() - start_time) * 1000.0, 2)
             is_success = "ERROR" not in raw_output.upper() or "TOTAL_MATCHES" in raw_output.upper()
 
-            # Record in immutable audit log
+            # Record in Prometheus metrics and immutable audit log
+            registry.record_tool_execution(
+                tool_name=name, duration_ms=duration_ms, success=is_success
+            )
             self.authorizer.record_execution(
                 actor=tool_call.caller_id,
                 tool_name=name,
@@ -171,6 +179,7 @@ class AgentOrchestrator:
 
         except Exception as e:
             duration_ms = round((time.monotonic() - start_time) * 1000.0, 2)
+            registry.record_tool_execution(tool_name=name, duration_ms=duration_ms, success=False)
             logger.exception("tool_dispatch_exception", tool=name, error=str(e))
             return ToolResult(
                 call_id=tool_call.call_id,
@@ -198,53 +207,65 @@ class AgentOrchestrator:
             return "run_python", {"code": "print('Calculation executed successfully')"}
         return None, {}
 
-    async def run_task(
-        self,
-        user_query: str,
-        user_id: str = "analyst",
-        channel_id: str = "general",
-    ) -> str:
-        """Execute a complete analytical task request from start to finish."""
-        # 1. Input validation & prompt injection check
-        val = validate_slack_message(user_query)
-        if not val.is_valid:
-            logger.warning("user_query_rejected", violations=val.violations)
-            return (
-                "Security policy violation: Your input was flagged as potentially unsafe "
-                f"or malformed ({', '.join(val.violations)})."
+    async def _call_llm_api(self, prompt: str) -> str | None:
+        """Call external LLM API if configured, returning synthesized text."""
+        llm_cfg = self.llm_config
+        api_key = (
+            llm_cfg.api_key.get_secret_value()
+            or os.getenv("GEMINI_API_KEY", "")
+            or os.getenv("GOOGLE_API_KEY", "")
+        )
+        if not api_key:
+            return None
+
+        # Google Gemini endpoint
+        if "gemini" in llm_cfg.provider.lower() or "gemini" in llm_cfg.model.lower():
+            model = llm_cfg.model or "gemini-2.5-flash"
+            endpoint = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent?key={api_key}"
             )
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": llm_cfg.temperature,
+                    "maxOutputTokens": min(llm_cfg.max_tokens, 2048),
+                },
+            }
+            try:
+                async with httpx.AsyncClient(timeout=float(llm_cfg.timeout_s)) as client:
+                    resp = await client.post(endpoint, json=payload)
+                    if resp.status_code == httpx.codes.OK:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts:
+                                return str(parts[0].get("text", "")).strip()
+            except Exception as e:
+                logger.warning("gemini_api_call_failed", error=str(e))
+                return None
 
-        sanitized_query = val.sanitized_input
+        return None
 
-        # 2. Check semantic cache
-        cached_answer = self.cache.get(user_id=user_id, query=sanitized_query)
-        if cached_answer is not None:
-            logger.info("returning_cached_answer", user_id=user_id)
-            return f"[Cached Response]\n{cached_answer}"
-
-        # 3. Initialize Agent State and Session Context
-        state = AgentState(user_query=sanitized_query)
-        state.status = AgentStatus.PLANNING
-        self.session_store.add_message(user_id, channel_id, "user", sanitized_query)
-
-        # 4. Generate Execution Plan
-        plan = self.planner.create_plan(sanitized_query)
-        state.plan = plan
-        state.status = AgentStatus.EXECUTING
-
-        # 5. Execute Plan with Loop Boundaries
+    async def _execute_plan_loop(
+        self,
+        plan: list[str],
+        sanitized_query: str,
+        user_id: str,
+        state: AgentState,
+    ) -> tuple[int, list[str]]:
+        """Execute plan steps with bounded iterations, timeouts, and reflexion."""
         start_time = time.monotonic()
         tool_call_count = 0
         collected_findings: list[str] = []
 
         for step_idx, step_desc in enumerate(plan):
-            # Check execution timeout limit
             if (time.monotonic() - start_time) > self.config.max_execution_time_s:
                 logger.warning("max_execution_time_exceeded", elapsed=time.monotonic() - start_time)
                 state.status = AgentStatus.BLOCKED
                 break
 
-            # Check tool calls limit
             if tool_call_count >= self.config.max_tool_calls:
                 logger.warning("max_tool_calls_exceeded", count=tool_call_count)
                 state.status = AgentStatus.BLOCKED
@@ -267,7 +288,6 @@ class AgentOrchestrator:
                 traj_step.tool_result = tool_result
                 tool_call_count += 1
 
-                # Reflexion / step validation
                 eval_res = self.reflexion.evaluate_step(step_desc, tool_result)
                 if not eval_res.is_complete and eval_res.should_replan:
                     logger.info("replanning_step_due_to_failure", critique=eval_res.critique)
@@ -281,28 +301,97 @@ class AgentOrchestrator:
             state.steps.append(traj_step)
             self.episodic_store.record_step(state.session_id, traj_step)
 
-        # 6. Synthesize Final Structured Answer
-        findings_text = "\n".join(collected_findings)
-        summary = findings_text if findings_text else "Task executed and verified."
-        response = (
-            f"### Analytical Response to: {sanitized_query}\n\n"
-            f"**Plan Executed:** {len(plan)} steps ({tool_call_count} tool calls)\n\n"
-            f"**Summary Findings:**\n{summary}\n\n"
-            "**Confidence:** Verified via tool execution and data validation."
-        )
+        return tool_call_count, collected_findings
 
-        state.status = AgentStatus.COMPLETED
-        state.updated_at = datetime.now(UTC)
+    async def run_task(
+        self,
+        user_query: str,
+        user_id: str = "analyst",
+        channel_id: str = "general",
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """Execute a complete analytical task request from start to finish."""
+        registry.record_task_start()
+        with trace_span("agent.run_task", {"user_id": user_id, "channel_id": channel_id}):
+            # 1. Input validation & prompt injection check
+            val = validate_slack_message(user_query)
+            if not val.is_valid:
+                registry.record_task_completion(success=False)
+                logger.warning("user_query_rejected", violations=val.violations)
+                return (
+                    "Security policy violation: Your input was flagged as potentially unsafe "
+                    f"or malformed ({', '.join(val.violations)})."
+                )
 
-        # 7. Record to session and cache
-        self.session_store.add_message(user_id, channel_id, "assistant", response)
-        self.cache.set(user_id=user_id, query=sanitized_query, response=response)
+            sanitized_query = val.sanitized_input
+            if attachments:
+                notes = [
+                    f"[Attached: {a.get('filename')} ({a.get('size', 0)}B)]" for a in attachments
+                ]
+                sanitized_query = f"{sanitized_query}\n\n" + "\n".join(notes)
 
-        # Auto-store key facts into long-term memory
-        self.vector_memory.store_fact(
-            user_id=user_id,
-            content=f"Query '{sanitized_query}' completed with findings.",
-            source="session_completion",
-        )
+            # 2. Check semantic cache
+            cached_answer = self.cache.get(user_id=user_id, query=sanitized_query)
+            if cached_answer is not None:
+                registry.record_task_completion(success=True)
+                logger.info("returning_cached_answer", user_id=user_id)
+                return f"[Cached Response]\n{cached_answer}"
 
-        return response
+            # 3. Initialize Agent State and Session Context
+            state = AgentState(user_query=sanitized_query)
+            state.status = AgentStatus.PLANNING
+            self.session_store.add_message(user_id, channel_id, "user", sanitized_query)
+
+            # 4. Generate Execution Plan
+            plan = self.planner.create_plan(sanitized_query)
+            state.plan = plan
+            state.status = AgentStatus.EXECUTING
+
+            # 5. Execute Plan with Loop Boundaries
+            tool_call_count, collected_findings = await self._execute_plan_loop(
+                plan=plan,
+                sanitized_query=sanitized_query,
+                user_id=user_id,
+                state=state,
+            )
+
+            # 6. Synthesize Final Structured Answer
+            findings_text = "\n".join(collected_findings)
+            summary = findings_text if findings_text else "Task executed and verified."
+
+            synthesis_prompt = (
+                f"You are the Hermes Assistant. Synthesize a concise answer for:\n"
+                f"Query: {sanitized_query}\n\n"
+                f"Findings:\n{summary}\n"
+            )
+            llm_text = await self._call_llm_api(synthesis_prompt)
+            if llm_text:
+                response = (
+                    f"### Analytical Response to: {sanitized_query}\n\n"
+                    f"{llm_text}\n\n"
+                    f"*Verified via {tool_call_count} tool calls across {len(plan)} plan steps.*"
+                )
+            else:
+                response = (
+                    f"### Analytical Response to: {sanitized_query}\n\n"
+                    f"**Plan Executed:** {len(plan)} steps ({tool_call_count} tool calls)\n\n"
+                    f"**Summary Findings:**\n{summary}\n\n"
+                    "**Confidence:** Verified via tool execution and data validation."
+                )
+
+            state.status = AgentStatus.COMPLETED
+            state.updated_at = datetime.now(UTC)
+
+            # 7. Record to session and cache
+            self.session_store.add_message(user_id, channel_id, "assistant", response)
+            self.cache.set(user_id=user_id, query=sanitized_query, response=response)
+
+            # Auto-store key facts into long-term memory
+            self.vector_memory.store_fact(
+                user_id=user_id,
+                content=f"Query '{sanitized_query}' completed with findings.",
+                source="session_completion",
+            )
+
+            registry.record_task_completion(success=True, tokens=state.total_tokens_used)
+            return response
