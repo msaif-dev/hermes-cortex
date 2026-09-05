@@ -42,6 +42,12 @@ class TestDocumentSearchServer:
         assert data["total_matches"] == 0
         assert data["documents"] == []
 
+    async def test_search_docs_workspace_indexing(self) -> None:
+        raw_result = await search_docs(query="architecture")
+        data = json.loads(raw_result)
+        assert data["total_matches"] > 0
+        assert any("architecture" in doc["title"].lower() for doc in data["documents"])
+
 
 class TestPostgresQueryServer:
     """Tests for PostgreSQL query tool."""

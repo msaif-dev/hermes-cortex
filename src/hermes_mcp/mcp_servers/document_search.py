@@ -9,6 +9,7 @@ Requirements: FR-MCP-001, GEMINI.md §11.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Annotated, Any
 
 from mcp.server import MCPServer
@@ -61,6 +62,38 @@ _SAMPLE_DOCS: list[dict[str, Any]] = [
 ]
 
 
+def load_workspace_docs() -> list[dict[str, Any]]:
+    """Scan and index markdown documentation from the workspace docs/ folder."""
+    all_docs = list(_SAMPLE_DOCS)
+    docs_dir = Path.cwd() / "docs"
+    if not docs_dir.exists():
+        return all_docs
+
+    doc_counter = 100
+    for path in docs_dir.rglob("*.md"):
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            title = path.stem.replace("-", " ").replace("_", " ").title()
+            for line in content.splitlines():
+                if line.startswith("# "):
+                    title = line.lstrip("# ").strip()
+                    break
+            category = path.parent.name
+            all_docs.append(
+                {
+                    "id": f"doc-{doc_counter}",
+                    "title": title,
+                    "category": category,
+                    "content": content[:2000],
+                    "tags": [category, path.stem],
+                }
+            )
+            doc_counter += 1
+        except Exception as e:
+            logger.debug("workspace_doc_read_error", path=str(path), error=str(e))
+    return all_docs
+
+
 @mcp.tool(name="search_docs")
 async def search_docs(
     query: Annotated[
@@ -93,7 +126,7 @@ async def search_docs(
     query_terms = set(query_lower.split())
 
     matches: list[dict[str, Any]] = []
-    for doc in _SAMPLE_DOCS:
+    for doc in load_workspace_docs():
         if category and doc.get("category", "").lower() != category.lower():
             continue
 

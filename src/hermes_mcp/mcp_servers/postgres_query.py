@@ -52,6 +52,7 @@ async def get_db_pool() -> asyncpg.Pool | None:
                 min_size=config.min_connections,
                 max_size=config.max_connections,
                 command_timeout=config.statement_timeout_ms / 1000.0,
+                timeout=1.0,
             )
         except Exception as e:
             logger.warning("db_connection_pool_failed", error=str(e))
