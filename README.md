@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/Tests-92%20Passing-success.svg)]()
 [![Coverage](https://img.shields.io/badge/Coverage-81%25-success.svg)]()
 
-**Hermes Cortex** is an enterprise-grade autonomous research and data engineering platform. Powered by the official **Hermes Agent** runtime, Google Gemini, and the **Model Context Protocol (MCP)**, it empowers analysts and engineers to securely query production databases, search internal documentation, inspect codebases, run sandboxed Python computations, and analyze uploaded datasets through conversational interfaces and automated pipelines.
+**Hermes Cortex** is an enterprise-grade autonomous research and data engineering platform. Powered by the **Hermes Agent** runtime and the **Model Context Protocol (MCP)**, it empowers analysts and engineers to securely query production databases, search internal documentation, inspect codebases, run sandboxed Python computations, and analyze uploaded datasets through conversational interfaces and automated pipelines.
 
 ---
 
@@ -22,7 +22,7 @@
 - [Verification & Quality Gates](#verification--quality-gates)
 
 > [!IMPORTANT]
-> For a step-by-step walkthrough on how to generate your **Google Gemini API Key**, **Slack Tokens**, and configure all environment variables, see the **[Complete Setup Guide (SETUP.md)](SETUP.md)**.
+> For a step-by-step walkthrough on how to obtain your **LLM API Key**, configure **Slack Tokens**, and set up all environment variables, see the **[Complete Setup Guide (SETUP.md)](SETUP.md)**.
 
 ---
 
@@ -62,7 +62,7 @@ graph TD
 
 ## Key Features
 
-- **Official Hermes Agent Runtime (`hermes-agent==0.19.0`):** Native Model Context Protocol (MCP) client, multi-turn reasoning loops, and multi-provider management.
+- **Hermes Agent Runtime (`hermes-agent==0.19.0`):** Native Model Context Protocol (MCP) client, multi-turn reasoning loops, and multi-provider management.
 - **Deterministic SQL Safety:** Read-only query enforcement (only `SELECT`, CTE `WITH`, and `EXPLAIN` queries are executed; destructive mutations are blocked).
 - **Sandboxed Code Execution:** Dynamic Python execution in isolated Daytona cloud containers or restricted local sub-processes with resource guards and timeouts.
 - **Multimodal File Attachments:** Ingestion of CSV, TSV, JSON, SQL, Python, and markdown files via Slack Bolt gateway with 10MB limits and virus/path traversal protections.
@@ -86,7 +86,7 @@ graph TD
 ## Quick Start
 
 ### 1. Installation & Environment Configuration
-Follow the **[Setup Guide (SETUP.md)](SETUP.md)** to install dependencies and create your `.env` file with your Gemini API key:
+Follow the **[Setup Guide (SETUP.md)](SETUP.md)** to install dependencies and create your `.env` file with your LLM API key:
 
 ```bash
 # Clone the repository
@@ -98,7 +98,7 @@ pip install -e ".[dev,cli]"
 
 # Configure environment
 cp .env.example .env
-# Edit .env and paste your GEMINI_API_KEY (see SETUP.md for details)
+# Edit .env and configure your LLM API key (see SETUP.md for details)
 ```
 
 ### 2. Launch the Interactive Agent
