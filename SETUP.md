@@ -48,8 +48,11 @@ This guide provides step-by-step instructions for installing, configuring, and r
 
 Open your newly created `.env` file. Below are the exact instructions to retrieve each value:
 
-### 3.1 Google Gemini API Key
-Hermes Cortex features native Google Gemini integration.
+### 3.1 LLM API Key Configuration
+
+Hermes Cortex connects to your preferred language model via standard OpenAI-compatible endpoints. Below are step-by-step instructions for the two supported setup paths: **Google Gemini API Key** and **Router API Key (OpenRouter)**.
+
+#### Option A: Google Gemini API Key
 
 1. Navigate to [Google AI Studio](https://aistudio.google.com/app/apikey).
 2. Sign in with your Google Account.
@@ -65,7 +68,23 @@ Hermes Cortex features native Google Gemini integration.
    GEMINI_API_KEY=AIzaSyYourGeneratedKeyHere
    GOOGLE_API_KEY=AIzaSyYourGeneratedKeyHere
    ```
-   > **Note:** `gemini-2.5-flash` is recommended for high-speed, cost-efficient analysis. If you need deep architectural reasoning, you can change `LLM_MODEL` to `gemini-2.5-pro`.
+   > **Tip:** `gemini-2.5-flash` is recommended for high-speed, cost-efficient analysis. If you need deep architectural reasoning, you can change `LLM_MODEL` to `gemini-2.5-pro`.
+
+#### Option B: Router API Key (OpenRouter)
+
+1. Navigate to [OpenRouter Keys](https://openrouter.ai/settings/keys).
+2. Sign in or create an OpenRouter account.
+3. Click **"Create Key"**, give your key a recognizable name (e.g. `Hermes Cortex`), and click **"Create"**.
+4. Copy your generated Router API key (it begins with `sk-or-v1-...`).
+5. Paste it into your `.env` file:
+   ```env
+   LLM_PROVIDER=openrouter
+   LLM_MODEL=anthropic/claude-3.5-sonnet
+   LLM_API_KEY=sk-or-v1-your-router-key-here
+   LLM_API_BASE=https://openrouter.ai/api/v1
+   OPENROUTER_API_KEY=sk-or-v1-your-router-key-here
+   ```
+   > **Tip:** Router keys grant unified access to top models (Claude 3.5 Sonnet, Llama 3.3 70B, Gemini 2.5 Flash, DeepSeek V3) through a single endpoint. You can change `LLM_MODEL` to any model supported by the router.
 
 ---
 
