@@ -5,9 +5,15 @@ and operational error rates.
 
 Requirements: NFR-OBS-002, GEMINI.md §27.
 """
+
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
+
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -77,3 +83,122 @@ class MetricsRegistry:
 
 # Global shared registry singleton
 registry = MetricsRegistry()
+
+
+class MetricsServer:
+    """Lightweight async HTTP server for exporting Prometheus metrics.
+
+    Serves Prometheus-compatible metrics on /metrics and health status on /healthz.
+    """
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 9090,
+        metrics_registry: MetricsRegistry | None = None,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.registry = metrics_registry or registry
+        self._server: asyncio.Server | None = None
+
+    async def _handle_request(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        """Process incoming HTTP GET requests for metrics and health checks."""
+        try:
+            line = await reader.readline()
+            if not line:
+                writer.close()
+                await writer.wait_closed()
+                return
+
+            request_line = line.decode("utf-8", errors="replace").strip()
+            parts = request_line.split()
+            method = parts[0] if parts else ""
+            path = parts[1] if len(parts) > 1 else ""
+
+            # Consume headers until delimiter
+            while True:
+                header = await reader.readline()
+                if not header or header in (b"\r\n", b"\n"):
+                    break
+
+            if method != "GET":
+                body = b"Method Not Allowed"
+                response = (
+                    b"HTTP/1.1 405 Method Not Allowed\r\n"
+                    b"Content-Type: text/plain\r\n"
+                    b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+                    b"Connection: close\r\n\r\n" + body
+                )
+            elif path == "/metrics":
+                body = self.registry.export_prometheus_text().encode("utf-8")
+                response = (
+                    b"HTTP/1.1 200 OK\r\n"
+                    b"Content-Type: text/plain; version=0.0.4; charset=utf-8\r\n"
+                    b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+                    b"Connection: close\r\n\r\n" + body
+                )
+            elif path in ("/healthz", "/health"):
+                body = b'{"status": "ok"}\n'
+                response = (
+                    b"HTTP/1.1 200 OK\r\n"
+                    b"Content-Type: application/json\r\n"
+                    b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+                    b"Connection: close\r\n\r\n" + body
+                )
+            else:
+                body = b"Not Found"
+                response = (
+                    b"HTTP/1.1 404 Not Found\r\n"
+                    b"Content-Type: text/plain\r\n"
+                    b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+                    b"Connection: close\r\n\r\n" + body
+                )
+
+            writer.write(response)
+            await writer.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
+        except Exception as exc:
+            logger.warning("metrics_server_handler_error", error=str(exc))
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception as close_exc:
+                logger.debug("metrics_socket_close_debug", error=str(close_exc))
+
+    async def start(self) -> asyncio.Server:
+        """Start the metrics HTTP server."""
+        self._server = await asyncio.start_server(self._handle_request, self.host, self.port)
+        if self._server.sockets:
+            sock = self._server.sockets[0]
+            self.port = sock.getsockname()[1]
+        logger.info("metrics_server_started", host=self.host, port=self.port)
+        return self._server
+
+    async def stop(self) -> None:
+        """Stop the metrics HTTP server cleanly."""
+        if self._server:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
+            logger.info("metrics_server_stopped", port=self.port)
+
+    @property
+    def is_running(self) -> bool:
+        """Return True if server is actively listening."""
+        return self._server is not None and self._server.is_serving()
+
+
+async def start_metrics_server(
+    host: str = "127.0.0.1",
+    port: int = 9090,
+    metrics_registry: MetricsRegistry | None = None,
+) -> MetricsServer:
+    """Helper to instantiate and start a MetricsServer."""
+    server = MetricsServer(host=host, port=port, metrics_registry=metrics_registry)
+    await server.start()
+    return server

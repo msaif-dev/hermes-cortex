@@ -5,6 +5,7 @@ of the agent reasoning trajectory.
 
 Requirements: GEMINI.md §27, NFR-OBS-001.
 """
+
 from __future__ import annotations
 
 import enum
@@ -18,6 +19,7 @@ logger = get_logger(__name__)
 
 class LifecycleEventType(enum.StrEnum):
     """Categorized lifecycle events in the agent execution loop."""
+
     TASK_STARTED = "TASK_STARTED"
     PLAN_FORMULATED = "PLAN_FORMULATED"
     TOOL_DISPATCHED = "TOOL_DISPATCHED"
